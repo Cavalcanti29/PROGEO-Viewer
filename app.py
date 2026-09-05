@@ -32,7 +32,7 @@ class LeitorPROGEO:
         lendo_coord = lendo_elem = lendo_nos_result = False
         gauss_temp_S, gauss_temp_E = {}, {}
 
-        with open(self.caminho, 'r') as f:
+        with open(self.caminho, 'r', encoding='latin-1', errors='replace') as f:
             for linha in f:
                 linha_strip = linha.strip()
                 
