@@ -164,6 +164,12 @@ def carregar_modelo(file_bytes):
     return LeitorPROGEO("temp.pri")
 
 st.title("Visualizador PROGEO 2D")
+# ---- SOBRE / CRÉDITOS ----
+st.info(
+    "🛠️ **Desenvolvido por:** Victor Carlos Vital Cavalcanti "
+    "— *Engenheiro Civil | Mestrando em Geotecnia (COPPE/UFRJ)*\n\n"
+    "Ferramenta analítica de pós-processamento de tensões, deformações e trajetórias para o solver PROGEO 2D."
+)
 uploaded_file = st.file_uploader("Faça o upload do seu arquivo .PRI", type=["pri", "txt", "out"])
 
 if uploaded_file is not None:
