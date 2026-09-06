@@ -86,8 +86,9 @@ class LeitorPROGEO:
                     lendo_nos_result = True
                     for el in self.elementos.keys():
                         if gauss_temp_S[el]:
-                            m_S = np.mean(gauss_temp_S[el], axis=0)
-                            m_E = np.mean(gauss_temp_E[el], axis=0)
+                            # Captura diretamente a 5ª linha (a média gerada pelo PROGEO)
+                            m_S = gauss_temp_S[el][-1] 
+                            m_E = gauss_temp_E[el][-1]
                             self.historico_elem[el][passo_global] = {
                                 'SXX': m_S[0], 'SYY': m_S[1], 'SZZ': m_S[2], 'SXZ': m_S[3],
                                 'S1': m_S[4], 'S3': m_S[5], 'ANGLE': m_S[7], 'PWP': m_S[9], 'RM': m_S[10],
