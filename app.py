@@ -155,7 +155,7 @@ class LeitorPROGEO:
 # ==============================================================================
 # 2. INTERFACE WEB (STREAMLIT APP)
 # ==============================================================================
-st.set_page_config(page_title="PROGEO 2D Viewer", layout="wide")
+st.set_page_config(page_title="Pós-Processador PROGEO", layout="wide")
 
 @st.cache_resource
 def carregar_modelo(file_bytes):
@@ -164,14 +164,14 @@ def carregar_modelo(file_bytes):
         f.write(file_bytes)
     return LeitorPROGEO("temp.pri")
 
-st.title("Visualizador PROGEO 2D")
+st.title("Pós-Processador PROGEO")
 # ---- SOBRE / CRÉDITOS ----
 st.info(
-    "🛠️ **Desenvolvido por:** Victor Carlos Vital Cavalcanti "
+    "🛠️ **Desenvolvido por:** Victor Cavalcanti "
     "— *Engenheiro Civil | Mestrando em Geotecnia (COPPE/UFRJ)*\n\n"
-    "Ferramenta analítica de pós-processamento de tensões, deformações e trajetórias para o solver PROGEO 2D."
+    "Ferramente de pós-processamento de dados do PROGEO. Seu uso não elimina a necessidade de utilizar o pós-processador oficial (Postgeo), ou o software integrado Sysgeo."
 )
-uploaded_file = st.file_uploader("Faça o upload do seu arquivo .PRI", type=["pri", "txt", "out"])
+uploaded_file = st.file_uploader("Faça o upload do seu arquivo .PRI", type=["pri"])
 
 if uploaded_file is not None:
     progeo = carregar_modelo(uploaded_file.getvalue())
@@ -191,7 +191,7 @@ if uploaded_file is not None:
     
     st.sidebar.markdown("---")
     ver_cruz = st.sidebar.checkbox("Cruzes de Tensão")
-    esc_cruz = st.sidebar.number_input("Escala Cruz:", value=0.05, step=0.01)
+    esc_cruz = st.sidebar.number_input("Escala Cruz:", value=0.005, step=0.001)
     ver_id_nos = st.sidebar.checkbox("IDs dos Nós")
     ver_id_el = st.sidebar.checkbox("IDs dos Elementos")
     proporcao_real = st.sidebar.checkbox("Proporção Real 1:1", value=True)
