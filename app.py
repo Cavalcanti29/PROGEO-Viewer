@@ -89,11 +89,16 @@ class LeitorPROGEO:
                             # Captura diretamente a 5ª linha (a média gerada pelo PROGEO)
                             m_S = gauss_temp_S[el][-1] 
                             m_E = gauss_temp_E[el][-1]
+                            pwp = m_S[9] # Poropressão
                             self.historico_elem[el][passo_global] = {
                                 'SXX': m_S[0], 'SYY': m_S[1], 'SZZ': m_S[2], 'SXZ': m_S[3],
-                                'S1': m_S[4], 'S3': m_S[5], 'ANGLE': m_S[7], 'PWP': m_S[9], 'RM': m_S[10],
+                                'S1': m_S[4], 'S3': m_S[5], 'ANGLE': m_S[7], 'PWP': pwp, 'RM': m_S[10],
                                 'EXX': m_E[0], 'EYY': m_E[1], 'EZZ': m_E[2], 'EXZ': m_E[3],
-                                'E1': m_E[4], 'E3': m_E[5]
+                                'E1': m_E[4], 'E3': m_E[5],
+                                'S_DEV': m_S[4] - m_S[5], 'E_DEV': m_E[4] - m_E[5],
+                                # Tensões Totais
+                                'SXX_TOT': m_S[0] - pwp, 'SYY_TOT': m_S[1] - pwp,
+                                'SZZ_TOT': m_S[2] - pwp, 'S1_TOT': m_S[4] - pwp, 'S3_TOT': m_S[5] - pwp
                             }
                     continue
 
@@ -124,10 +129,15 @@ class LeitorPROGEO:
         
         for el, conec in self.elementos.items():
             ativo = True if forcar_tudo else (passo in self.historico_elem[el]) and (self.materiais[el] in materiais_ativos)
-            n1, n2, n3, n4 = [node_to_idx[conec[i]] for i in (0, 2, 4, 6)]
-            triangulos.extend([[n1, n2, n3], [n1, n3, n4]])
-            mask.extend([not ativo, not ativo])
-            if ativo: nos_ativos.update([conec[0], conec[2], conec[4], conec[6]])
+            
+            # Utiliza os 8 nós do Serendipity para montar 6 triângulos de alta resolução
+            n0, n1, n2, n3, n4, n5, n6, n7 = [node_to_idx[conec[i]] for i in range(8)]
+            triangulos.extend([
+                [n0, n1, n7], [n1, n2, n3], [n3, n4, n5], 
+                [n5, n6, n7], [n1, n3, n7], [n3, n5, n7]
+            ])
+            mask.extend([not ativo] * 6)
+            if ativo: nos_ativos.update(conec)
             
         triang = mtri.Triangulation(x, z, triangulos)
         triang.set_mask(mask)
@@ -180,21 +190,56 @@ if uploaded_file is not None:
     # ---- BARRA LATERAL (CONTROLES) ----
     st.sidebar.header("Controles da Malha")
     passo = st.sidebar.slider("Passo Global:", 1, progeo.total_passos, progeo.total_passos)
-    variavel = st.sidebar.selectbox("Isolinha de Cor:", ['Geometria Base', 'SZZ', 'SXX', 'S1', 'S3', 'PWP', 'RM', 'EZZ', 'EXX', 'E1', 'E3'])
+    # Dicionário de Mapeamento (Visual -> Variável Interna)
+    mapa_variaveis = {
+        "Apenas Geometria": "Geometria Base",
+        "🔸 TENSÕES (Stresses)": "Geometria Base",
+        "    Tensão Vertical (σz)": "SZZ",
+        "    Tensão Horizontal (σx)": "SXX",
+        "    Tensão Principal Maior (σ1)": "S1",
+        "    Tensão Principal Menor (σ3)": "S3",
+        "    Tensão Desviadora (q Cambridge)": "Q_CAM",
+        "    Poropressão (u)": "PWP",
+        "🔸 DEFORMAÇÕES ESPECÍFICAS": "Geometria Base",
+        "    Deformação Vertical (εz)": "EZZ",
+        "    Deformação Horizontal (εx)": "EXX",
+        "    Deformação Principal Maior (ε1)": "E1",
+        "    Deformação Principal Menor (ε3)": "E3",
+        "    Deformação Desviadora (εq)": "EQ_CAM",
+        "🔸 PLASTIFICAÇÃO": "Geometria Base",
+        "    Resistência Mobilizada (R)": "RM"
+    }
+    
+    # O Streamlit mostra as chaves limpas para o usuário, mas o código usa os valores internos
+    opcao_selecionada = st.sidebar.selectbox("Isolinha de Cor:", list(mapa_variaveis.keys()), index=0)
+    variavel = mapa_variaveis[opcao_selecionada]
     mats_ativos = st.sidebar.multiselect("Materiais Ativos:", progeo.lista_materiais, default=progeo.lista_materiais)
     
     st.sidebar.markdown("---")
     ver_def = st.sidebar.checkbox("Rede Deformada")
-    mult_def = st.sidebar.number_input("Escala Deformada:", value=1.0, step=1.0)
+    mult_def = st.sidebar.number_input("Escala Deformada:", value=1.00, step=0.01)
     ver_vet = st.sidebar.checkbox("Vetores de Deslocamento")
-    mult_vet = st.sidebar.number_input("Escala Vetor:", value=1.0, step=0.5)
+    mult_vet = st.sidebar.number_input("Escala Vetor:", value=1.00, step=0.01)
     
     st.sidebar.markdown("---")
     ver_cruz = st.sidebar.checkbox("Cruzes de Tensão")
-    esc_cruz = st.sidebar.number_input("Escala Cruz:", value=0.005, step=0.001)
+    esc_cruz = st.sidebar.number_input("Escala Cruz:", value=0.005, step=0.01, format="%.3f")
     ver_id_nos = st.sidebar.checkbox("IDs dos Nós")
     ver_id_el = st.sidebar.checkbox("IDs dos Elementos")
     proporcao_real = st.sidebar.checkbox("Proporção Real 1:1", value=True)
+    # Controles de Câmera (Zoom/Pan)
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔍 Câmera (Zoom / Pan)")
+    x_orig_all = [progeo.nos[n]['X'] for n in progeo.nos]
+    z_orig_all = [progeo.nos[n]['Z'] for n in progeo.nos]
+    
+    col_x1, col_x2 = st.sidebar.columns(2)
+    zoom_x_min = col_x1.number_input("X Mín", value=float(min(x_orig_all)-0))
+    zoom_x_max = col_x2.number_input("X Máx", value=float(max(x_orig_all)+0.5))
+
+    col_z1, col_z2 = st.sidebar.columns(2)
+    zoom_z_min = col_z1.number_input("Z Mín", value=float(min(z_orig_all)-0))
+    zoom_z_max = col_z2.number_input("Z Máx", value=float(max(z_orig_all)+0.5))
 
     # ---- ABAS DA INTERFACE ----
     aba_malha, aba_graficos = st.tabs(["Visualização 2D (Malha)", "Gráficos Analíticos"])
@@ -203,7 +248,7 @@ if uploaded_file is not None:
     # ABA 1: MALHA
     # ---------------------------------------------------------
     with aba_malha:
-        fig_malha, ax_malha = plt.subplots(figsize=(12, 6))
+        fig_malha, ax_malha = plt.subplots(figsize=(8, 4))
         
         triang_fundo, _, _ = progeo.gerar_triangulacao_ativa(passo, mats_ativos, forcar_tudo=True)
         ax_malha.triplot(triang_fundo, color='lightgray', linewidth=0.3, alpha=0.4)
@@ -256,18 +301,22 @@ if uploaded_file is not None:
                 ang = np.deg2rad(hist[passo].get('ANGLE', 0))
                 dx1, dz1 = s1 * np.cos(ang), s1 * np.sin(ang)
                 dx3, dz3 = s3 * np.cos(ang + np.pi/2), s3 * np.sin(ang + np.pi/2)
-                ax_malha.plot([xc-dx1, xc+dx1], [zc-dz1, zc+dz1], color='red' if hist[passo]['S1'] < 0 else 'blue', linewidth=1.5)
-                ax_malha.plot([xc-dx3, xc+dx3], [zc-dz3, zc+dz3], color='red' if hist[passo]['S3'] < 0 else 'blue', linewidth=1.5)
+                ax_malha.plot([xc-dx1, xc+dx1], [zc-dz1, zc+dz1], color='red' if hist[passo]['S1'] < 0 else 'blue', linewidth=1)
+                ax_malha.plot([xc-dx3, xc+dx3], [zc-dz3, zc+dz3], color='red' if hist[passo]['S3'] < 0 else 'blue', linewidth=1)
                 
-            if ver_id_el: ax_malha.text(xc, zc, str(el), fontsize=8, color='maroon', weight='bold', ha='center', va='center', zorder=10)
+            if ver_id_el: ax_malha.text(xc, zc, str(el), fontsize=4, color='maroon', weight='bold', ha='center', va='center', zorder=10)
 
         if ver_id_nos:
             for n_id, n_data in progeo.nos.items():
-                if n_id in nos_ativos: ax_malha.text(n_data['X'], n_data['Z'], str(n_id), fontsize=7, color='black', ha='center', va='center', zorder=10)
+                if n_id in nos_ativos: ax_malha.text(n_data['X'], n_data['Z'], str(n_id), fontsize=3, color='black', ha='center', va='center', zorder=10)
 
         info = progeo.passo_info.get(passo, {'Estagio': '-', 'Inc': '-'})
         titulo = f"Passo Global: {passo} | Estágio: {info['Estagio']} | Incremento: {info['Inc']}"
-        ax_malha.set_title(titulo, fontsize=12, weight='bold')
+        ax_malha.set_title(titulo, fontsize=8)
+
+        # Aplica Controles de Câmera (Zoom e Pan)
+        ax_malha.set_xlim(zoom_x_min, zoom_x_max)
+        ax_malha.set_ylim(zoom_z_min, zoom_z_max)
 
         if proporcao_real: ax_malha.set_aspect('equal')
         else: ax_malha.set_aspect('auto')
@@ -285,13 +334,13 @@ if uploaded_file is not None:
             id_alvo = st.number_input("ID (Nó/Elemento):", value=1)
         with col2:
             ver_env = st.checkbox("Plotar Envoltória de Ruptura", value=True)
-            c_linha = st.number_input("Coesão (c'):", value=0.0)
-            phi_linha = st.number_input("Ângulo de Atrito (φ'):", value=30.0)
+            c_linha = st.number_input("Coesão (c'):", value=0.00)
+            phi_linha = st.number_input("Ângulo de Atrito (φ'):", value=0.0)
         with col3:
-            x0 = st.number_input("X Início (Seção):", value=0.0)
-            z0 = st.number_input("Z Início (Seção):", value=0.0)
-            x1 = st.number_input("X Fim (Seção):", value=150.0)
-            z1 = st.number_input("Z Fim (Seção):", value=0.0)
+            x0 = st.number_input("X Início (Seção):", value=0.00)
+            z0 = st.number_input("Z Início (Seção):", value=0.00)
+            x1 = st.number_input("X Fim (Seção):", value=0.00)
+            z1 = st.number_input("Z Fim (Seção):", value=0.00)
             
         if st.button("Gerar Gráfico"):
             fig_g, ax_g = plt.subplots(figsize=(10, 5))
