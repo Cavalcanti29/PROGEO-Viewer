@@ -169,7 +169,7 @@ st.title("Pós-Processador PROGEO")
 st.info(
     "🛠️ **Desenvolvido por:** Victor Cavalcanti "
     "— *Engenheiro Civil | Mestrando em Geotecnia (COPPE/UFRJ)*\n\n"
-    "Ferramente de pós-processamento de dados do PROGEO. Seu uso não elimina a necessidade de utilizar o pós-processador oficial (Postgeo), ou o software integrado Sysgeo."
+    "Ferramenta de pós-processamento de dados do PROGEO. Seu uso não elimina a necessidade de utilizar o pós-processador oficial (Postgeo), ou o software integrado Sysgeo."
 )
 uploaded_file = st.file_uploader("Faça o upload do seu arquivo .PRI", type=["pri"])
 
