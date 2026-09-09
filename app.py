@@ -95,7 +95,8 @@ class LeitorPROGEO:
                                 'SXX': m_S[0], 'SYY': m_S[1], 'SZZ': m_S[2], 'SXZ': m_S[3],
                                 'S1': m_S[4], 'S3': m_S[5], 'ANGLE': m_S[7], 'PWP': pwp, 'RM': m_S[10],
                                 'EXX': m_E[0], 'EYY': m_E[1], 'EZZ': m_E[2], 'EXZ': m_E[3],
-                                'E1': m_E[4], 'E3': m_E[5], 'EV': ev,
+                                'E1': m_E[4], 'E3': m_E[5], 
+                                'EV': ev,
                                 'S_DEV': m_S[4] - m_S[5], 'E_DEV': m_E[4] - m_E[5],
                                 # Tensões Totais
                                 'SXX_TOT': m_S[0] - pwp, 'SYY_TOT': m_S[1] - pwp,
