@@ -270,7 +270,7 @@ if uploaded_file is not None:
                 ax_malha.triplot(triang, color='gray', linewidth=0.1, alpha=0.3)
                 fig_malha.colorbar(contorno, ax=ax_malha, label=variavel)
             else:
-                ax_malha.triplot(triang, color='gray', linewidth=0.8)
+                ax_malha.triplot(triang, color='gray', linewidth=0.6)
 
         if ver_def and not np.all(triang.mask):
             fator_def = escala_base_visual * mult_def
@@ -278,7 +278,7 @@ if uploaded_file is not None:
             z_def = [progeo.nos[n]['Z'] + progeo.historico_nos[n].get(passo, {'dZ': 0.0})['dZ'] * fator_def for n in sorted(progeo.nos.keys())]
             tri_def = mtri.Triangulation(x_def, z_def, triang.triangles)
             tri_def.set_mask(triang.mask)
-            ax_malha.triplot(tri_def, color='black', linewidth=0.8, alpha=0.6)
+            ax_malha.triplot(tri_def, color='green', linewidth=0.6, alpha=0.6)
 
         if ver_vet and len(nos_ativos) > 0:
             fator_vet = escala_base_visual * mult_vet
