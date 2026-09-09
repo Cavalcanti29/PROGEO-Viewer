@@ -91,6 +91,7 @@ class LeitorPROGEO:
                             m_E = gauss_temp_E[el][-1]
                             pwp = m_S[9] # Poropressão
                             ev = m_E[0] + m_E[1] + m_E[2] #Def. volmétrica
+                            
                             self.historico_elem[el][passo_global] = {
                                 'SXX': m_S[0], 'SYY': m_S[1], 'SZZ': m_S[2], 'SXZ': m_S[3],
                                 'S1': m_S[4], 'S3': m_S[5], 'ANGLE': m_S[7], 'PWP': pwp, 'RM': m_S[10],
