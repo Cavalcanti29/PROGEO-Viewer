@@ -270,7 +270,7 @@ if uploaded_file is not None:
                 ax_malha.triplot(triang, color='gray', linewidth=0.1, alpha=0.3)
                 cbar=fig_malha.colorbar(contorno, ax=ax_malha, label=variavel, ticks=niveis, format='%.2e')
                 # Diminui o tamanho da fonte dos números da escala (ticks)
-                cbar.ax.tick_params(labelsize=7)
+                cbar.ax.tick_params(labelsize=6)
                 
                 # Diminui o tamanho da fonte do título da barra (ex: 'EZZ')
                 cbar.set_label(variavel, size=8)
