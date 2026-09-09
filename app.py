@@ -264,11 +264,11 @@ if uploaded_file is not None:
                 v_min, v_max = np.min(valores_ativos), np.max(valores_ativos)
                 
                 if np.isclose(v_min, v_max): v_min, v_max = v_min - 0.1, v_max + 0.1
-                niveis = np.linspace(v_min, v_max, 12)
+                niveis = np.linspace(v_min, v_max, 11)
                 
-                contorno = ax_malha.tricontourf(triang, valores, levels=niveis, cmap='jet', extend='both')
+                contorno = ax_malha.tricontourf(triang, valores, levels=niveis, cmap='jet')
                 ax_malha.triplot(triang, color='gray', linewidth=0.1, alpha=0.3)
-                fig_malha.colorbar(contorno, ax=ax_malha, label=variavel)
+                fig_malha.colorbar(contorno, ax=ax_malha, label=variavel, ticks=niveis, format='%.2e')
             else:
                 ax_malha.triplot(triang, color='gray', linewidth=0.6)
 
