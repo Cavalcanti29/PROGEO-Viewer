@@ -207,7 +207,7 @@ if uploaded_file is not None:
         "    Deformação Principal Maior (ε1)": "E1",
         "    Deformação Principal Menor (ε3)": "E3",
         "    Deformação Cisalhante (γ)": "E_DEV",
-        "    Deformação Volumétrica (εv)": "ev",
+        "    Deformação Volumétrica (εv)": "EV",
         "🔸 PLASTIFICAÇÃO": "Geometria Base",
         "    Resistência Mobilizada (R)": "RM"
     }
