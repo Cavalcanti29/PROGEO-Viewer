@@ -322,6 +322,9 @@ if uploaded_file is not None:
         else: ax_malha.set_aspect('auto')
             
         ax_malha.grid(True, linestyle=':', alpha=0.6)
+
+        # Define o tamanho da fonte dos números nos eixos
+        ax_malha.tick_params(axis='both', which='major', labelsize=5)
         st.pyplot(fig_malha)
 
     # ---------------------------------------------------------
