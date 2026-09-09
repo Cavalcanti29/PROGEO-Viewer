@@ -217,13 +217,13 @@ if uploaded_file is not None:
     
     st.sidebar.markdown("---")
     ver_def = st.sidebar.checkbox("Rede Deformada")
-    mult_def = st.sidebar.number_input("Escala Deformada:", value=1.00, step=0.01)
+    mult_def = st.sidebar.number_input("Escala Deformada:", value=1.00, step=0.1)
     ver_vet = st.sidebar.checkbox("Vetores de Deslocamento")
-    mult_vet = st.sidebar.number_input("Escala Vetor:", value=1.00, step=0.01)
+    mult_vet = st.sidebar.number_input("Escala Vetor:", value=1.00, step=0.1)
     
     st.sidebar.markdown("---")
     ver_cruz = st.sidebar.checkbox("Cruzes de Tensão")
-    esc_cruz = st.sidebar.number_input("Escala Cruz:", value=0.005, step=0.01, format="%.3f")
+    esc_cruz = st.sidebar.number_input("Escala Cruz:", value=0.005, step=0.1, format="%.3f")
     ver_id_nos = st.sidebar.checkbox("IDs dos Nós")
     ver_id_el = st.sidebar.checkbox("IDs dos Elementos")
     proporcao_real = st.sidebar.checkbox("Proporção Real 1:1", value=True)
@@ -267,7 +267,7 @@ if uploaded_file is not None:
                 niveis = np.linspace(v_min, v_max, 12)
                 
                 contorno = ax_malha.tricontourf(triang, valores, levels=niveis, cmap='jet', extend='both')
-                ax_malha.triplot(triang, color='white', linewidth=0.1, alpha=0.3)
+                ax_malha.triplot(triang, color='gray', linewidth=0.1, alpha=0.3)
                 fig_malha.colorbar(contorno, ax=ax_malha, label=variavel)
             else:
                 ax_malha.triplot(triang, color='gray', linewidth=0.8)
