@@ -268,7 +268,12 @@ if uploaded_file is not None:
                 
                 contorno = ax_malha.tricontourf(triang, valores, levels=niveis, cmap='jet')
                 ax_malha.triplot(triang, color='gray', linewidth=0.1, alpha=0.3)
-                fig_malha.colorbar(contorno, ax=ax_malha, label=variavel, ticks=niveis, fontsize=8, format='%.2e')
+                cbar=fig_malha.colorbar(contorno, ax=ax_malha, label=variavel, ticks=niveis, format='%.2e')
+                # Diminui o tamanho da fonte dos números da escala (ticks)
+                cbar.ax.tick_params(labelsize=7)
+                
+                # Diminui o tamanho da fonte do título da barra (ex: 'EZZ')
+                cbar.set_label(variavel, size=8)
             else:
                 ax_malha.triplot(triang, color='gray', linewidth=0.6)
 
