@@ -301,8 +301,8 @@ if uploaded_file is not None:
                 ang = np.deg2rad(hist[passo].get('ANGLE', 0))
                 dx1, dz1 = s1 * np.cos(ang), s1 * np.sin(ang)
                 dx3, dz3 = s3 * np.cos(ang + np.pi/2), s3 * np.sin(ang + np.pi/2)
-                ax_malha.plot([xc-dx1, xc+dx1], [zc-dz1, zc+dz1], color='red' if hist[passo]['S1'] < 0 else 'blue', linewidth=1)
-                ax_malha.plot([xc-dx3, xc+dx3], [zc-dz3, zc+dz3], color='red' if hist[passo]['S3'] < 0 else 'blue', linewidth=1)
+                ax_malha.plot([xc-dx1, xc+dx1], [zc-dz1, zc+dz1], color='red' if hist[passo]['S1'] < 0 else 'blue', linewidth=0.5)
+                ax_malha.plot([xc-dx3, xc+dx3], [zc-dz3, zc+dz3], color='red' if hist[passo]['S3'] < 0 else 'blue', linewidth=0.5)
                 
             if ver_id_el: ax_malha.text(xc, zc, str(el), fontsize=4, color='maroon', weight='bold', ha='center', va='center', zorder=10)
 
