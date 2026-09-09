@@ -198,14 +198,14 @@ if uploaded_file is not None:
         "    Tensão Horizontal (σx)": "SXX",
         "    Tensão Principal Maior (σ1)": "S1",
         "    Tensão Principal Menor (σ3)": "S3",
-        "    Tensão Desviadora (q Cambridge)": "Q_CAM",
+        "    Tensão Desviadora (q)": "S_DEV",
         "    Poropressão (u)": "PWP",
         "🔸 DEFORMAÇÕES ESPECÍFICAS": "Geometria Base",
         "    Deformação Vertical (εz)": "EZZ",
         "    Deformação Horizontal (εx)": "EXX",
         "    Deformação Principal Maior (ε1)": "E1",
         "    Deformação Principal Menor (ε3)": "E3",
-        "    Deformação Desviadora (εq)": "EQ_CAM",
+        "    Deformação Desviadora (εq)": "E_DEV",
         "🔸 PLASTIFICAÇÃO": "Geometria Base",
         "    Resistência Mobilizada (R)": "RM"
     }
