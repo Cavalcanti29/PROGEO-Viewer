@@ -90,11 +90,12 @@ class LeitorPROGEO:
                             m_S = gauss_temp_S[el][-1] 
                             m_E = gauss_temp_E[el][-1]
                             pwp = m_S[9] # Poropressão
+                            ev = m_E[0] + m_E[1] + m_E[2] #Def. volmétrica
                             self.historico_elem[el][passo_global] = {
                                 'SXX': m_S[0], 'SYY': m_S[1], 'SZZ': m_S[2], 'SXZ': m_S[3],
                                 'S1': m_S[4], 'S3': m_S[5], 'ANGLE': m_S[7], 'PWP': pwp, 'RM': m_S[10],
                                 'EXX': m_E[0], 'EYY': m_E[1], 'EZZ': m_E[2], 'EXZ': m_E[3],
-                                'E1': m_E[4], 'E3': m_E[5],
+                                'E1': m_E[4], 'E3': m_E[5], 'EV': ev,
                                 'S_DEV': m_S[4] - m_S[5], 'E_DEV': m_E[4] - m_E[5],
                                 # Tensões Totais
                                 'SXX_TOT': m_S[0] - pwp, 'SYY_TOT': m_S[1] - pwp,
@@ -205,7 +206,8 @@ if uploaded_file is not None:
         "    Deformação Horizontal (εx)": "EXX",
         "    Deformação Principal Maior (ε1)": "E1",
         "    Deformação Principal Menor (ε3)": "E3",
-        "    Deformação Desviadora (εq)": "E_DEV",
+        "    Deformação Cisalhante (γ)": "E_DEV",
+        "    Deformação Volumétrica (εv)": "ev",
         "🔸 PLASTIFICAÇÃO": "Geometria Base",
         "    Resistência Mobilizada (R)": "RM"
     }
