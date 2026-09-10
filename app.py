@@ -202,6 +202,7 @@ if uploaded_file is not None:
         "    Tensão Principal Maior (σ1)": "S1",
         "    Tensão Principal Menor (σ3)": "S3",
         "    Tensão Desviadora (q)": "S_DEV",
+        "    Tensão Cisalhante (τxz)": "SXZ",
         "    Poropressão (u)": "PWP",
         "🔸 DEFORMAÇÕES ESPECÍFICAS": "Geometria Base",
         "    Deformação Vertical (εz)": "EZZ",
