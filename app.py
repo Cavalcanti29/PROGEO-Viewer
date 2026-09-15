@@ -85,12 +85,27 @@ class LeitorPROGEO:
                 if "TOTAL NODAL VALUES" in linha:
                     lendo_nos_result = True
                     for el in self.elementos.keys():
-                        if gauss_temp_S[el]:
+                        if gauss_temp_S[el] and len(gauss_temp_S[el]) >= 5:
                             # Captura diretamente a 5ª linha (a média gerada pelo PROGEO)
                             m_S = gauss_temp_S[el][-1] 
                             m_E = gauss_temp_E[el][-1]
                             pwp = m_S[9] # Poropressão
                             ev = m_E[0] + m_E[1] + m_E[2] #Def. volmétrica
+                            
+                            # ADIÇÃO: Captura a matriz dos 4 Pontos de Gauss para a cor
+                            g_S = np.array(gauss_temp_S[el][-5:-1])
+                            g_E = np.array(gauss_temp_E[el][-5:-1])
+                            g_pwp = g_S[:, 9]
+                            g_s1, g_s3 = g_S[:, 4], g_S[:, 5]
+                            g_e1, g_e3 = g_E[:, 4], g_E[:, 5]
+                            
+                            gauss_vals = {
+                                'SXX': g_S[:, 0], 'SYY': g_S[:, 1], 'SZZ': g_S[:, 2], 'SXZ': g_S[:, 3],
+                                'S1': g_s1, 'S3': g_s3, 'PWP': g_pwp, 'RM': g_S[:, 10],
+                                'EXX': g_E[:, 0], 'EYY': g_E[:, 1], 'EZZ': g_E[:, 2], 'EXZ': g_E[:, 3],
+                                'E1': g_e1, 'E3': g_e3, 'EV': g_E[:, 0] + g_E[:, 1] + g_E[:, 2],
+                                'S_DEV': g_s1 - g_s3, 'E_DEV': g_e1 - g_e3
+                            }
                             
                             self.historico_elem[el][passo_global] = {
                                 'SXX': m_S[0], 'SYY': m_S[1], 'SZZ': m_S[2], 'SXZ': m_S[3],
@@ -101,7 +116,8 @@ class LeitorPROGEO:
                                 'S_DEV': m_S[4] - m_S[5], 'E_DEV': m_E[4] - m_E[5],
                                 # Tensões Totais
                                 'SXX_TOT': m_S[0] - pwp, 'SYY_TOT': m_S[1] - pwp,
-                                'SZZ_TOT': m_S[2] - pwp, 'S1_TOT': m_S[4] - pwp, 'S3_TOT': m_S[5] - pwp
+                                'SZZ_TOT': m_S[2] - pwp, 'S1_TOT': m_S[4] - pwp, 'S3_TOT': m_S[5] - pwp,
+                                'GAUSS': gauss_vals # Variável nova injetada aqui
                             }
                     continue
 
@@ -151,17 +167,52 @@ class LeitorPROGEO:
         contagem = np.zeros(len(self.nos))
         node_to_idx = {nid: i for i, nid in enumerate(sorted(self.nos.keys()))}
         
+        # Fatores da matriz matemática de Extrapolação Bilinear 2x2
+        a = 1 + np.sqrt(3)/2
+        b = -0.5
+        c = 1 - np.sqrt(3)/2
+        
         for el, conec in self.elementos.items():
             if passo in self.historico_elem[el]:
-                val = self.historico_elem[el][passo].get(variavel, 0)
-                for no in conec:
-                    idx = node_to_idx[no]
-                    valores_nos[idx] += val
-                    contagem[idx] += 1
+                # Tenta puxar a matriz de Gauss para alta fidelidade
+                if 'GAUSS' in self.historico_elem[el][passo] and variavel in self.historico_elem[el][passo]['GAUSS']:
+                    g_vals = self.historico_elem[el][passo]['GAUSS'][variavel]
+                    g1, g2, g3, g4 = g_vals[0], g_vals[1], g_vals[2], g_vals[3]
                     
+                    # Projeta os valores nos 4 nós dos cantos do elemento (Serendipity)
+                    v_corners = [
+                        a*g1 + b*g2 + b*g3 + c*g4, # Canto 0
+                        b*g1 + c*g2 + a*g3 + b*g4, # Canto 2
+                        c*g1 + b*g2 + b*g3 + a*g4, # Canto 4
+                        b*g1 + a*g2 + c*g3 + b*g4  # Canto 6
+                    ]
+                    
+                    # Distribui para a conectividade do elemento (Cantos e Nós Intermediários)
+                    for i, no in enumerate(conec):
+                        idx = node_to_idx[no]
+                        if i == 0: val = v_corners[0]
+                        elif i == 2: val = v_corners[1]
+                        elif i == 4: val = v_corners[2]
+                        elif i == 6: val = v_corners[3]
+                        elif i == 1: val = (v_corners[0] + v_corners[1]) / 2 # Média aresta inferior
+                        elif i == 3: val = (v_corners[1] + v_corners[2]) / 2 # Média aresta direita
+                        elif i == 5: val = (v_corners[2] + v_corners[3]) / 2 # Média aresta superior
+                        elif i == 7: val = (v_corners[3] + v_corners[0]) / 2 # Média aresta esquerda
+                        
+                        valores_nos[idx] += val
+                        contagem[idx] += 1
+                else:
+                    # Fallback de segurança se for uma variável calculada só no centróide
+                    val = self.historico_elem[el][passo].get(variavel, 0)
+                    for no in conec:
+                        idx = node_to_idx[no]
+                        valores_nos[idx] += val
+                        contagem[idx] += 1
+                        
         with np.errstate(invalid='ignore'):
             valores_nos = np.divide(valores_nos, contagem)
             valores_nos = np.nan_to_num(valores_nos, nan=0.0, posinf=0.0, neginf=0.0)
+            
         return valores_nos
 
 
@@ -263,7 +314,9 @@ if uploaded_file is not None:
             ax_malha.text(0.5, 0.5, "Nenhum elemento ativo.", ha='center', color='red', transform=ax_malha.transAxes)
         else:
             if variavel != 'Geometria Base':
-                valores = progeo._interpolar_para_nos(passo, variavel)
+                # Agora esta função sempre trará os valores matemáticos de Alta Fidelidade (Picos)
+                valores = progeo._interpolar_para_nos(passo, variavel) 
+                
                 idx_ativos = [map_nos[n] for n in nos_ativos]
                 valores_ativos = valores[idx_ativos] if len(idx_ativos) > 0 else [0, 1]
                 v_min, v_max = np.min(valores_ativos), np.max(valores_ativos)
@@ -273,10 +326,10 @@ if uploaded_file is not None:
                 
                 contorno = ax_malha.tricontourf(triang, valores, levels=niveis, cmap='jet')
                 ax_malha.triplot(triang, color='gray', linewidth=0.1, alpha=0.3)
-                cbar=fig_malha.colorbar(contorno, ax=ax_malha, label=variavel, ticks=niveis, format='%.2e')
+                
+                cbar = fig_malha.colorbar(contorno, ax=ax_malha, label=variavel, ticks=niveis, format='%.2e')
                 # Diminui o tamanho da fonte dos números da escala (ticks)
                 cbar.ax.tick_params(labelsize=6)
-                
                 # Diminui o tamanho da fonte do título da barra (ex: 'EZZ')
                 cbar.set_label(variavel, size=8)
             else:
