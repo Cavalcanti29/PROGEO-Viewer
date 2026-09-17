@@ -679,11 +679,12 @@ def carregar_modelo(file_bytes):
         f.write(file_bytes)
     return LeitorPROGEO("temp.pri")
 
-st.title("Pós-Processador PROGEO — V5")
+st.title("Pós-Processador PROGEO")
 st.info(
     "🛠️ **Desenvolvido por:** Victor Cavalcanti "
     "— *Engenheiro Civil | Mestrando em Geotecnia (COPPE/UFRJ)*\n\n"
-    "Pós-processador independente para leitura e análise dos resultados do PROGEO."
+    "Ferramenta de pós-processamento de dados do PROGEO. Seu uso não elimina a necessidade de utilizar o pós-processador oficial (Postgeo), ou o software integrado Sysgeo."
+    "Contato: victor.cavalcanti@coc.ufrj.br"
 )
 
 uploaded_file = st.file_uploader("Faça o upload do seu arquivo .PRI", type=["pri"])
