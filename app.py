@@ -16,25 +16,43 @@ def _convolucao_1d(A, k, axis):
     return np.apply_along_axis(lambda col: np.convolve(col, k, mode='same'), 0, A)
 
 
-def suavizar_campo_visual(G, sigma=1.35, preservar_mask=True):
-    """Suavização gaussiana mascarada, exclusivamente para renderização.
-
-    A normalização pelos pesos válidos evita que NaN/áreas vazias contaminem
-    o campo. Os dados originais de Gauss nunca são alterados.
-    """
-    if sigma is None or sigma <= 0:
-        return G.copy()
-    radius = max(1, int(np.ceil(3.0 * float(sigma))))
+def _kernel_gauss(sigma):
+    sigma = float(sigma)
+    if sigma <= 0:
+        return np.array([1.0])
+    radius = max(1, int(np.ceil(3.0 * sigma)))
     x = np.arange(-radius, radius + 1, dtype=float)
-    k = np.exp(-(x*x) / (2.0 * float(sigma)**2))
+    k = np.exp(-(x*x) / (2.0 * sigma**2))
     k /= k.sum()
+    return k
+
+
+def suavizar_campo_visual(G, sigma=1.35, preservar_mask=True):
+    """Suavização gaussiana mascarada, apenas para renderização.
+
+    Aceita sigma escalar ou (sigma_x, sigma_z), sempre em pixels.
+    A reconstrução física e os valores de Gauss permanecem inalterados.
+    """
+    if sigma is None:
+        return G.copy()
+    if np.isscalar(sigma):
+        sx = sz = float(sigma)
+    else:
+        sx, sz = float(sigma[0]), float(sigma[1])
+    if sx <= 0 and sz <= 0:
+        return G.copy()
+
+    kx = _kernel_gauss(max(sx, 1e-9))
+    kz = _kernel_gauss(max(sz, 1e-9))
     finite = np.isfinite(G)
     A = np.where(finite, G, 0.0)
     W = finite.astype(float)
-    B = _convolucao_1d(A, k, axis=1)
-    BW = _convolucao_1d(W, k, axis=1)
-    C = _convolucao_1d(B, k, axis=0)
-    CW = _convolucao_1d(BW, k, axis=0)
+
+    B = _convolucao_1d(A, kx, axis=1)
+    BW = _convolucao_1d(W, kx, axis=1)
+    C = _convolucao_1d(B, kz, axis=0)
+    CW = _convolucao_1d(BW, kz, axis=0)
+
     out = np.divide(C, CW, out=np.full_like(C, np.nan), where=CW > 1e-12)
     vals = G[finite]
     if vals.size:
@@ -77,7 +95,9 @@ def reconstruir_malha_global_cache(dados_elementos, nx=720, nz=480, sigma=1.35):
         xy = np.asarray(xy_flat, dtype=float).reshape(8, 2)
         g = np.asarray(g_flat, dtype=float)
         poly = xy[[0, 2, 4, 6]]
-        if not np.all(np.isfinite(g)):
+        # Permite pontos de Gauss com campos indisponíveis (ex.: ******).
+        # O elemento continua válido se houver pelo menos 3 valores finitos.
+        if np.count_nonzero(np.isfinite(g)) < 3:
             continue
         xs.extend(poly[:, 0]); zs.extend(poly[:, 1])
         elementos_prepared.append((int(el), int(mat), xy, g, poly))
@@ -171,11 +191,27 @@ def reconstruir_malha_global_cache(dados_elementos, nx=720, nz=480, sigma=1.35):
         if not np.any(valid):
             continue
 
-        # Interpolação bilinear exata entre os 4 pontos de Gauss.
+        # Interpolação bilinear entre os 4 pontos de Gauss.
+        # Quando um Gauss estiver indisponível (******), fazemos uma
+        # reconstrução local normalizada apenas com os Gauss disponíveis,
+        # sem inventar um valor físico para o ponto ausente.
         lr_m = (gp - R)/(2*gp); lr_p = (gp + R)/(2*gp)
         ls_m = (gp - S)/(2*gp); ls_p = (gp + S)/(2*gp)
-        V = (g[0]*lr_m*ls_m + g[1]*lr_p*ls_m + g[2]*lr_p*ls_p + g[3]*lr_m*ls_p)
-        V = np.clip(V, float(np.min(g)), float(np.max(g)))
+        W = np.stack([lr_m*ls_m, lr_p*ls_m, lr_p*ls_p, lr_m*ls_p])
+        finite_g = np.isfinite(g)
+        if np.all(finite_g):
+            V = np.sum(g[:, None, None] * W, axis=0)
+        else:
+            # Reponderação apenas para renderização: os dados originais
+            # permanecem NaN no ponto que veio como ******.
+            Wf = W.copy()
+            Wf[~finite_g, ...] = 0.0
+            denom = np.sum(Wf, axis=0)
+            numer = np.sum(np.where(finite_g[:, None, None], g[:, None, None], 0.0) * Wf, axis=0)
+            V = np.divide(numer, denom, out=np.full_like(R, np.nan), where=np.abs(denom) > 1e-12)
+        gfinite = g[finite_g]
+        if gfinite.size:
+            V = np.clip(V, float(np.min(gfinite)), float(np.max(gfinite)))
         V[~valid] = np.nan
 
         slc = (slice(j0,j1+1), slice(i0,i1+1))
@@ -218,13 +254,34 @@ def reconstruir_malha_global_cache(dados_elementos, nx=720, nz=480, sigma=1.35):
     finite_shift[1:,:] |= valid_global[1:,:] != valid_global[:-1,:]
     interface |= finite_shift
 
-    # Suavização leve global + reforço somente numa faixa próxima às interfaces.
-    smooth_global = suavizar_campo_visual(raw, sigma=float(sigma), preservar_mask=True)
-    band = _dilatar_mascara(interface, n_iter=max(2, int(np.ceil(float(sigma) * 1.5)))) & valid_global
-    smooth_interface = suavizar_campo_visual(raw, sigma=max(2.4, float(sigma) * 1.9), preservar_mask=True)
+    # Suavização visual anisotrópica baseada no tamanho físico típico da malha.
+    # Assim a suavização cresce com o tamanho do elemento, em vez de depender
+    # somente da resolução da imagem.
+    widths = []
+    heights = []
+    for _, _, _, _, ppoly in elementos_prepared:
+        widths.append(float(np.max(ppoly[:, 0]) - np.min(ppoly[:, 0])))
+        heights.append(float(np.max(ppoly[:, 1]) - np.min(ppoly[:, 1])))
+    tamanho_tipico = float(np.median(np.minimum(widths, heights))) if widths and heights else 1.0
+    dx = max((xmax - xmin) / max(nx - 1, 1), 1e-12)
+    dz = max((zmax - zmin) / max(nz - 1, 1), 1e-12)
+    sigma_phys = max(float(sigma), 0.10 * tamanho_tipico)
+    sigma_x = sigma_phys / dx
+    sigma_z = sigma_phys / dz
+
+    smooth_global = suavizar_campo_visual(raw, sigma=(sigma_x, sigma_z), preservar_mask=True)
+    band = _dilatar_mascara(
+        interface,
+        n_iter=max(2, int(np.ceil(0.35 * max(sigma_x, sigma_z))))
+    ) & valid_global
+    smooth_interface = suavizar_campo_visual(
+        raw,
+        sigma=(1.60 * sigma_x, 1.60 * sigma_z),
+        preservar_mask=True
+    )
     G = raw.copy()
-    G[valid_global] = 0.78*smooth_global[valid_global] + 0.22*raw[valid_global]
-    G[band] = 0.76*smooth_interface[band] + 0.24*G[band]
+    G[valid_global] = 0.94*smooth_global[valid_global] + 0.06*raw[valid_global]
+    G[band] = 0.88*smooth_interface[band] + 0.12*G[band]
 
     # Nunca permite que a representação ultrapasse os valores físicos originais.
     raw_vals = raw[valid_global]
@@ -275,9 +332,29 @@ class LeitorPROGEO:
         self.total_passos = 0
         self.max_desloc_global = 0.0
         self.largura_barragem = 0.0
-        self.regex_float = r'-?\d*\.\d+(?:E[+-]?\d+)?|\d*\.\d+(?:E[+-]?\d+)?'
+        self.regex_float = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?'
         self._parse_arquivo()
         self._calcular_escalas_base()
+
+    def _extrair_campos_resultado(self, linha, marcador, quantidade):
+        """Extrai campos numéricos preservando ****** como NaN."""
+        if marcador not in linha:
+            return None
+        trecho = linha.split(marcador, 1)[1]
+        tokens = re.findall(r'\*{6}|' + self.regex_float, trecho)
+        if len(tokens) < quantidade:
+            return None
+        tokens = tokens[:quantidade]
+        out = []
+        for token in tokens:
+            if token == '******':
+                out.append(np.nan)
+            else:
+                try:
+                    out.append(float(token))
+                except ValueError:
+                    out.append(np.nan)
+        return out
 
     def _parse_arquivo(self):
         """Lê o .PRI assumindo o padrão fixo do PROGEO:
@@ -350,14 +427,14 @@ class LeitorPROGEO:
                     gauss_temp_E.setdefault(el_atual, [])
 
                 if el_atual is not None and " S= " in linha:
-                    vals = re.findall(self.regex_float, linha)
-                    if len(vals) >= 12 and len(gauss_temp_S[el_atual]) < 5:
-                        gauss_temp_S[el_atual].append([float(v) for v in vals[1:12]])
+                    vals_s = self._extrair_campos_resultado(linha, "S=", 11)
+                    if vals_s is not None and len(gauss_temp_S[el_atual]) < 5:
+                        gauss_temp_S[el_atual].append(vals_s)
 
                 if el_atual is not None and " E= " in linha:
-                    vals = re.findall(self.regex_float, linha)
-                    if len(vals) >= 9 and len(gauss_temp_E[el_atual]) < 5:
-                        gauss_temp_E[el_atual].append([float(v) for v in vals[1:9]])
+                    vals_e = self._extrair_campos_resultado(linha, "E=", 8)
+                    if vals_e is not None and len(gauss_temp_E[el_atual]) < 5:
+                        gauss_temp_E[el_atual].append(vals_e)
 
                 if "TOTAL NODAL VALUES" in linha:
                     lendo_nos_result = True
@@ -486,7 +563,7 @@ class LeitorPROGEO:
             if passo not in self.historico_elem.get(el, {}):
                 continue
             g = self._gauss_ordenado(passo, el, variavel)
-            if g is None or not np.all(np.isfinite(g)):
+            if g is None or np.count_nonzero(np.isfinite(g)) < 3:
                 continue
             try:
                 xy = tuple(
@@ -563,7 +640,7 @@ class LeitorPROGEO:
         dados = self.preparar_dados_campo(passo, variavel, materiais_ativos)
         nx = min(900, max(420, int(n_local * 36)))
         nz = min(600, max(280, int(n_local * 24)))
-        malha = reconstruir_malha_global_cache(dados, nx=nx, nz=nz, sigma=1.35 if n_local >= 14 else 1.0)
+        malha = reconstruir_malha_global_cache(dados, nx=nx, nz=nz, sigma=0.0)
         grade = grade_cache_para_mpl(malha)
         return grade, dados
 
@@ -602,11 +679,11 @@ def carregar_modelo(file_bytes):
         f.write(file_bytes)
     return LeitorPROGEO("temp.pri")
 
-st.title("Pós-Processador PROGEO")
+st.title("Pós-Processador PROGEO — V5")
 st.info(
     "🛠️ **Desenvolvido por:** Victor Cavalcanti "
     "— *Engenheiro Civil | Mestrando em Geotecnia (COPPE/UFRJ)*\n\n"
-    "Ferramenta de pós-processamento de dados do PROGEO. Seu uso não elimina a necessidade de utilizar o pós-processador oficial (Postgeo), ou o software integrado Sysgeo."
+    "Pós-processador independente para leitura e análise dos resultados do PROGEO."
 )
 
 uploaded_file = st.file_uploader("Faça o upload do seu arquivo .PRI", type=["pri"])
@@ -674,28 +751,6 @@ if uploaded_file is not None:
     exportar_gif = st.sidebar.button("🎞️ Exportar GIF")
 
     aba_malha, aba_graficos = st.tabs(["Visualização 2D (Malha)", "Gráficos Analíticos"])
-
-    def adicionar_escala_distancia(ax, xmin, xmax, zmin, zmax):
-        """Adiciona uma barra de escala em coordenadas reais."""
-        largura = float(xmax - xmin)
-        altura = float(zmax - zmin)
-        if largura <= 0 or altura <= 0:
-            return
-        alvo = largura * 0.16
-        pot = 10 ** np.floor(np.log10(max(alvo, 1e-12)))
-        candidatos = np.array([1.0, 2.0, 2.5, 5.0, 10.0]) * pot
-        comprimento = float(candidatos[np.argmin(np.abs(candidatos - alvo))])
-        if comprimento >= largura * 0.8:
-            comprimento = largura * 0.1
-        x0 = xmin + largura * 0.05
-        x1 = x0 + comprimento
-        z0 = zmin + altura * 0.045
-        hcap = altura * 0.012
-        ax.plot([x0, x1], [z0, z0], color='black', linewidth=2.0, solid_capstyle='butt', zorder=20)
-        ax.plot([x0, x0], [z0-hcap, z0+hcap], color='black', linewidth=1.0, zorder=20)
-        ax.plot([x1, x1], [z0-hcap, z0+hcap], color='black', linewidth=1.0, zorder=20)
-        ax.text((x0+x1)/2.0, z0 + altura*0.02, f'{comprimento:g} m', ha='center', va='bottom', fontsize=7, color='black', zorder=20)
-        ax.text(x0, zmin + altura*0.008, 'Escala espacial', ha='left', va='bottom', fontsize=6.5, color='black', zorder=20)
 
     def adicionar_info_passo(ax, passo_local, variavel_local):
         info_local = progeo.passo_info.get(passo_local, {'Estagio':'-','Inc':'-'})
@@ -821,7 +876,6 @@ if uploaded_file is not None:
         ax.tick_params(axis='both', labelsize=6)
         ax.grid(True, linestyle=':', alpha=0.35)
         adicionar_info_passo(ax, passo_local, variavel)
-        adicionar_escala_distancia(ax, zoom_x_min, zoom_x_max, zoom_z_min, zoom_z_max)
 
     with aba_malha:
         info_atual = progeo.passo_info.get(passo, {'Estagio':'-','Inc':'-'})
