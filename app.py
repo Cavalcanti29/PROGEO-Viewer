@@ -449,13 +449,13 @@ class LeitorPROGEO:
                         m_E = np.asarray(gauss_temp_E[el][4], dtype=float)
 
                         pwp = m_S[9]
-                        ev = m_E[0] + m_E[1] + m_E[2]
+                        ev = m_E[4] + m_E[1] + m_E[5]
                         gauss_vals = {
                             'SXX': g_S[:, 0], 'SYY': g_S[:, 1], 'SZZ': g_S[:, 2], 'SXZ': g_S[:, 3],
                             'S1': g_S[:, 4], 'S3': g_S[:, 5], 'PWP': g_S[:, 9], 'RM': g_S[:, 10],
                             'EXX': g_E[:, 0], 'EYY': g_E[:, 1], 'EZZ': g_E[:, 2], 'EXZ': g_E[:, 3],
                             'E1': g_E[:, 4], 'E3': g_E[:, 5],
-                            'EV': g_E[:, 0] + g_E[:, 1] + g_E[:, 2],
+                            'EV': g_E[:, 4] + g_E[:, 1] + g_E[:, 5],
                             'S_DEV': g_S[:, 4] - g_S[:, 5],
                             'E_DEV': g_E[:, 4] - g_E[:, 5]
                         }
@@ -703,15 +703,16 @@ if uploaded_file is not None:
         "    Tensão Horizontal (σx)": "SXX",
         "    Tensão Principal Maior (σ1)": "S1",
         "    Tensão Principal Menor (σ3)": "S3",
-        "    Tensão Desviadora (q)": "S_DEV",
         "    Tensão Cisalhante (τxz)": "SXZ",
+        "    Tensão Desviadora (q)": "S_DEV",
         "    Poropressão (u)": "PWP",
         "🔸 DEFORMAÇÕES": "Geometria Base",
         "    Deformação Vertical (εz)": "EZZ",
         "    Deformação Horizontal (εx)": "EXX",
         "    Deformação Principal Maior (ε1)": "E1",
         "    Deformação Principal Menor (ε3)": "E3",
-        "    Deformação Cisalhante (γ)": "E_DEV",
+        "    Deformação Cisalhante (γ,xz)": "EXZ",
+        "    Deformação Desviadora (γ)": "E_DEV",
         "    Deformação Volumétrica (εv)": "EV",
         "🔸 PLASTIFICAÇÃO": "Geometria Base",
         "    Resistência Mobilizada (R)": "RM",
