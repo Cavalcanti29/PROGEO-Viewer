@@ -669,6 +669,155 @@ class LeitorPROGEO:
         return passos, [self.valor_elemento(el, p, variavel) for p in passos]
 
 
+    def max_deslocamento_passo(self, passo, materiais_ativos=None):
+        """Retorna o maior deslocamento nodal do passo selecionado.
+
+        O cálculo é feito diretamente a partir de dX/dZ dos nós, sem
+        interpolação. Quando materiais_ativos é fornecido, considera apenas
+        os nós pertencentes aos elementos desses materiais.
+        """
+        passo = int(passo)
+        if materiais_ativos is None:
+            nos_ativos = set(self.nos.keys())
+        else:
+            mats = set(materiais_ativos)
+            nos_ativos = {
+                n
+                for el, conec in self.elementos.items()
+                if self.materiais.get(el) in mats
+                for n in conec
+            }
+
+        melhor = None
+        for n_id in nos_ativos:
+            hist = self.historico_nos.get(n_id, {})
+            d = hist.get(passo)
+            if not d:
+                continue
+            dx = float(d.get('dX', np.nan))
+            dz = float(d.get('dZ', np.nan))
+            if not (np.isfinite(dx) and np.isfinite(dz)):
+                continue
+            mag = float(np.hypot(dx, dz))
+            if melhor is None or mag > melhor['magnitude']:
+                melhor = {
+                    'no': int(n_id),
+                    'dX': dx,
+                    'dZ': dz,
+                    'magnitude': mag,
+                }
+        return melhor
+
+    def _inverter_q8_ponto(self, xy, xq, zq):
+        """Encontra (r,s) de um ponto físico dentro de um elemento Q8."""
+        from matplotlib.path import Path as MplPath
+
+        poly = np.asarray(xy, dtype=float).reshape(8, 2)[[0, 2, 4, 6]]
+        if not MplPath(poly).contains_point((float(xq), float(zq)), radius=1e-9):
+            return None
+
+        xy8 = np.asarray(xy, dtype=float).reshape(8, 2)
+        xc = float(np.mean(poly[:, 0]))
+        zc = float(np.mean(poly[:, 1]))
+        hx = max(0.5 * (float(np.max(poly[:, 0])) - float(np.min(poly[:, 0]))), 1e-12)
+        hz = max(0.5 * (float(np.max(poly[:, 1])) - float(np.min(poly[:, 1]))), 1e-12)
+        r = float(np.clip((xq - xc) / hx, -1.5, 1.5))
+        s = float(np.clip((zq - zc) / hz, -1.5, 1.5))
+
+        for _ in range(15):
+            N = self._shape8(r, s)
+            xcur = float(np.dot(N, xy8[:, 0]))
+            zcur = float(np.dot(N, xy8[:, 1]))
+
+            dR = np.array([
+                (-2*r-s)*(s-1)/4, r*(s-1), (-2*r+s)*(s-1)/4,
+                0.5-0.5*s*s, (2*r+s)*(s+1)/4, -r*(s+1),
+                (2*r-s)*(s+1)/4, 0.5*s*s-0.5
+            ], dtype=float)
+            dS = np.array([
+                (-r-2*s)*(r-1)/4, 0.5*r*r-0.5, (-r+2*s)*(r+1)/4,
+                -s*(r+1), (r+1)*(r+2*s)/4, 0.5-0.5*r*r,
+                (r-1)*(r-2*s)/4, s*(r-1)
+            ], dtype=float)
+
+            j11 = float(np.dot(dR, xy8[:, 0]))
+            j12 = float(np.dot(dS, xy8[:, 0]))
+            j21 = float(np.dot(dR, xy8[:, 1]))
+            j22 = float(np.dot(dS, xy8[:, 1]))
+            det = j11 * j22 - j12 * j21
+            if abs(det) < 1e-12:
+                return None
+
+            dx = float(xq - xcur)
+            dz = float(zq - zcur)
+            dr = (dx * j22 - dz * j12) / det
+            ds = (j11 * dz - j21 * dx) / det
+            r += dr
+            s += ds
+
+            if abs(dr) < 1e-9 and abs(ds) < 1e-9:
+                break
+
+        if abs(r) > 1.0001 or abs(s) > 1.0001:
+            return None
+        return r, s
+
+    def deslocamentos_em_secao(self, passo, x0, z0, x1, z1, materiais_ativos=None, n=160):
+        """Interpola dX/dZ dos nós ao longo de uma seção usando Q8."""
+        passo = int(passo)
+        n = max(20, int(n))
+        t = np.linspace(0.0, 1.0, n)
+        xs = float(x0) + (float(x1) - float(x0)) * t
+        zs = float(z0) + (float(z1) - float(z0)) * t
+        dist = np.hypot(xs - float(x0), zs - float(z0))
+
+        mats = None if materiais_ativos is None else set(materiais_ativos)
+        elementos_candidatos = []
+        for el, conec in self.elementos.items():
+            if mats is not None and self.materiais.get(el) not in mats:
+                continue
+            if len(conec) != 8:
+                continue
+            if any(nid not in self.nos for nid in conec):
+                continue
+            # O deslocamento nodal precisa existir no passo para este elemento.
+            if any(passo not in self.historico_nos.get(nid, {}) for nid in conec):
+                continue
+            xy8 = tuple(
+                float(v)
+                for nid in conec
+                for v in (self.nos[nid]['X'], self.nos[nid]['Z'])
+            )
+            elementos_candidatos.append((int(el), tuple(conec), xy8))
+
+        dx_out = np.full(n, np.nan, dtype=float)
+        dz_out = np.full(n, np.nan, dtype=float)
+        el_out = np.full(n, -1, dtype=int)
+
+        for i, (xq, zq) in enumerate(zip(xs, zs)):
+            for el, conec, xy_flat in elementos_candidatos:
+                inv = self._inverter_q8_ponto(xy_flat, xq, zq)
+                if inv is None:
+                    continue
+                r, s = inv
+                N = self._shape8(r, s)
+                dx_nodes = np.array([self.historico_nos[nid][passo]['dX'] for nid in conec], dtype=float)
+                dz_nodes = np.array([self.historico_nos[nid][passo]['dZ'] for nid in conec], dtype=float)
+                dx_out[i] = float(np.dot(N, dx_nodes))
+                dz_out[i] = float(np.dot(N, dz_nodes))
+                el_out[i] = el
+                break
+
+        return {
+            'Distancia': dist,
+            'X': xs,
+            'Z': zs,
+            'dX': dx_out,
+            'dZ': dz_out,
+            'Elemento': el_out,
+        }
+
+
 
 
 st.set_page_config(page_title="Pós-Processador PROGEO", layout="wide")
@@ -881,7 +1030,20 @@ if uploaded_file is not None:
 
     with aba_malha:
         info_atual = progeo.passo_info.get(passo, {'Estagio':'-','Inc':'-'})
-        st.caption(f"**Passo Global {passo}**  |  **Estágio {info_atual['Estagio']}**  |  **Incremento {info_atual['Inc']}**  |  Materiais ativos: {', '.join(map(str, mats_ativos)) if mats_ativos else 'nenhum'}")
+        max_dado = progeo.max_deslocamento_passo(passo, mats_ativos)
+        if max_dado is not None:
+            desc_max = (
+                f" |  **|d| máx.: {max_dado['magnitude']:.4e}**"
+                f" (Nó {max_dado['no']}; dX={max_dado['dX']:.4e}; dZ={max_dado['dZ']:.4e})"
+            )
+        else:
+            desc_max = " |  **|d| máx.: —**"
+        st.caption(
+            f"**Passo Global {passo}**  |  **Estágio {info_atual['Estagio']}**"
+            f"  |  **Incremento {info_atual['Inc']}**"
+            f"  |  **Materiais ativos: {', '.join(map(str, mats_ativos)) if mats_ativos else 'nenhum'}**"
+            f"{desc_max}"
+        )
         if exportar_gif and variavel != 'Geometria Base' and mats_ativos:
             try:
                 p0_g, p1_g = int(min(passo_ini_anim, passo_fim_anim)), int(max(passo_ini_anim, passo_fim_anim))
@@ -944,6 +1106,7 @@ if uploaded_file is not None:
             'Trajetória p-q (elemento)',
             'Comparação p-q entre elementos',
             'Perfis de evolução ao longo de uma seção',
+            'Deslocamentos X/Z ao longo de uma seção',
             'Variável × Passo Global',
             'Valores em Seção de Reta'
         ])
@@ -1023,6 +1186,75 @@ if uploaded_file is not None:
                 st.download_button('📥 Baixar perfis CSV', df_prof.to_csv(index=False).encode('utf-8'),'perfis_evolucao.csv','text/csv', key='csv_profiles')
                 if not df_prof.empty:
                     st.download_button('📊 Baixar Excel', excel_bytes({'Perfis_evolucao': df_prof}), 'perfis_evolucao.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', key='xlsx_profiles')
+
+        elif modo == 'Deslocamentos X/Z ao longo de uma seção':
+            st.markdown("**Deslocamentos nodais interpolados ao longo de uma seção**")
+            c1, c2, c3, c4 = st.columns(4)
+            xd0 = c1.number_input('X início', value=0.0, key='dxsec_x0')
+            zd0 = c2.number_input('Z início', value=0.0, key='dxsec_z0')
+            xd1 = c3.number_input('X final', value=10.0, key='dxsec_x1')
+            zd1 = c4.number_input('Z final', value=5.0, key='dxsec_z1')
+            comps = st.multiselect(
+                'Componentes',
+                ['dX', 'dZ'],
+                default=['dX', 'dZ'],
+                key='desloc_comp_secao'
+            )
+            nsec = st.number_input('Pontos da seção', min_value=40, max_value=500, value=160, step=20, key='nsec_desloc')
+            if st.button('Gerar seção de deslocamentos'):
+                try:
+                    dados_d = progeo.deslocamentos_em_secao(
+                        passo, xd0, zd0, xd1, zd1, mats_ativos, n=int(nsec)
+                    )
+                    disponiveis = np.isfinite(dados_d['dX']) | np.isfinite(dados_d['dZ'])
+                    if not np.any(disponiveis):
+                        st.warning('Não há dados nodais suficientes para interpolar os deslocamentos nessa seção.')
+                    else:
+                        fig, ax = plt.subplots(figsize=(10, 5))
+                        for comp in comps:
+                            y = dados_d[comp]
+                            if np.any(np.isfinite(y)):
+                                ax.plot(
+                                    dados_d['Distancia'], y,
+                                    linewidth=2.0, label=comp
+                                )
+                        ax.axhline(0.0, linewidth=0.8, alpha=0.5)
+                        ax.set_xlabel('Distância ao longo da seção')
+                        ax.set_ylabel('Deslocamento')
+                        ax.set_title(
+                            f'Deslocamentos ao longo da seção — Passo {passo}'
+                        )
+                        ax.grid(True, alpha=0.3)
+                        if comps:
+                            ax.legend()
+                        st.pyplot(fig)
+                        plt.close(fig)
+
+                        df_desloc = pd.DataFrame({
+                            'Distancia_m': dados_d['Distancia'],
+                            'X_coord': dados_d['X'],
+                            'Z_coord': dados_d['Z'],
+                            'dX': dados_d['dX'],
+                            'dZ': dados_d['dZ'],
+                            'Elemento': dados_d['Elemento'],
+                        })
+                        st.download_button(
+                            '📥 Baixar deslocamentos CSV',
+                            df_desloc.to_csv(index=False).encode('utf-8'),
+                            'deslocamentos_secao.csv',
+                            'text/csv',
+                            key='csv_desloc_secao'
+                        )
+                        if not df_desloc.empty:
+                            st.download_button(
+                                '📊 Baixar Excel',
+                                excel_bytes({'Deslocamentos_secao': df_desloc}),
+                                'deslocamentos_secao.xlsx',
+                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                key='xlsx_desloc_secao'
+                            )
+                except Exception as exc:
+                    st.warning(f'Não foi possível gerar a seção de deslocamentos: {exc}')
 
         elif modo == 'Variável × Passo Global':
             tipo_alvo=st.radio('Fonte do histórico', ['Elemento','Nó'], horizontal=True)
