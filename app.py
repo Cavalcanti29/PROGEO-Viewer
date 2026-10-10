@@ -420,7 +420,7 @@ class LeitorPROGEO:
                     gauss_temp_E = {el: [] for el in self.elementos.keys()}
                     el_atual = None
 
-                match_el = re.search(r'EL\.NO\.\s+(\d+)', linha)
+                match_el = re.search(r'EL\.NO\.\s*(\d+)\b', linha)
                 if match_el:
                     el_atual = int(match_el.group(1))
                     gauss_temp_S.setdefault(el_atual, [])
